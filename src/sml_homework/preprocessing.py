@@ -2,9 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
-import pandas as pd
-import numpy as np
-
 def clean_and_encode_data(
     df: pd.DataFrame, 
     imputation_values: dict[str, float] | None = None
@@ -14,9 +11,11 @@ def clean_and_encode_data(
 
     Logic implemented:
     - **Ordinal Encoding**: Maps 'grade' (A-G) to integers.
-    - **Feature Extraction**: Creates 'grade' from 'grade_subgrade'.
-    - **One-Hot Encoding**: Converts 'loan_purpose' to binary vectors.
-    - **Imputation**: Uses Median values calculated only from the training set.
+    - **Feature Extraction**: Recovers 'grade' from 'grade_subgrade' if missing.
+    - **One-Hot Encoding**: Converts ALL remaining categorical columns (like gender, marital_status) to binary vectors.
+    - **Imputation**: Uses Median values calculated ONLY from the training set.
+    - **Log Transformation**: Applied to 'annual_income' to handle skewness found in EDA.
+    - **Feature Engineering**: Adds 'high_interest' flag based on EDA scatter plot findings.
     - **Leakage Prevention**: If `imputation_values` are provided, it uses them 
       instead of recalculating statistics.
 
@@ -36,42 +35,39 @@ def clean_and_encode_data(
     if 'id' in df_clean.columns:
         df_clean = df_clean.drop(columns=['id'])
 
-    # 2. Reduce data sparsity by extracting 'grade' from 'grade_subgrade'
-    # We must extract 'grade' from 'grade_subgrade' before we drop 'grade_subgrade'.
+    # 2. Robust Grade Handling
     if 'grade' not in df_clean.columns and 'grade_subgrade' in df_clean.columns:
         df_clean['grade'] = df_clean['grade_subgrade'].str[0]
         
     # 3. Ordinal Encoding for 'grade'
-    # We map A (best) -> 1 down to G (worst) -> 7.
     grade_map = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7}
     
     if 'grade' in df_clean.columns:
         df_clean['grade_encoded'] = df_clean['grade'].map(grade_map)
-        
-        # Handle potential mapping failures (NaNs) by filling with a middle ground (D=4)
         if df_clean['grade_encoded'].isnull().any():
              df_clean['grade_encoded'] = df_clean['grade_encoded'].fillna(4)
-             
-        # Drop the original 'grade' column now that we have the encoded version
         df_clean = df_clean.drop(columns=['grade'])
     
-    # 4. Avoid Multicollinearity
-    if 'grade_subgrade' in df_clean.columns and 'grade_encoded' in df_clean.columns:
+    # 4. Remove Redundancy
+    if 'grade_encoded' in df_clean.columns and 'grade_subgrade' in df_clean.columns:
         df_clean = df_clean.drop(columns=['grade_subgrade'])
 
-    # 5. One-Hot Encoding for 'loan_purpose'
-    if 'loan_purpose' in df_clean.columns:
+    # 5. One-Hot Encoding for ALL Categorical Columns
+    # We identify columns that are still 'object' or 'category' type.
+    # This covers: loan_purpose, gender, marital_status, education_level, employment_status
+    categorical_cols = df_clean.select_dtypes(include=['object', 'category']).columns.tolist()
+    
+    if categorical_cols:
         df_clean = pd.get_dummies(
             df_clean, 
-            columns=['loan_purpose'], 
+            columns=categorical_cols, 
             drop_first=True, 
             dtype=int
         )
 
-    # 6. Imputation to avoid Data Leakage from valid to train
+    # 6. Imputation againsy leakage
     numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
     
-    # Train mode: Calculate medians and save them
     if imputation_values is None:
         imputation_values = {}
         for col in numeric_cols:
@@ -79,18 +75,13 @@ def clean_and_encode_data(
                 median_val = df_clean[col].median()
                 imputation_values[col] = median_val
                 df_clean[col] = df_clean[col].fillna(median_val)
-    
-    # Test mode: Use provided medians
     else:
         for col, val in imputation_values.items():
             if col in df_clean.columns:
                 df_clean[col] = df_clean[col].fillna(val)
 
     # 7. Log Transformation (EDA Finding: Skewness)
-    # 'annual_income' showed extreme right-skewness. 
-    # We apply log1p (log(x+1)) to normalize the distribution.
     if 'annual_income' in df_clean.columns:
-        # Ensure no negative values (though income shouldn't be negative)
         df_clean['annual_income'] = df_clean['annual_income'].clip(lower=0)
         df_clean['annual_income'] = np.log1p(df_clean['annual_income'])
 
@@ -131,5 +122,10 @@ def scale_features(
     # 3. Transform Validation data using the train scaler
     X_val_scaled = X_val.copy()
     X_val_scaled[cols_to_scale] = scaler.transform(X_val[cols_to_scale])
+
+    # 4. Alignment Fix
+    # pd.get_dummies can create different columns if X_train has a category that X_val misses.
+    # We align X_val to X_train, filling missing columns with 0.
+    X_val_scaled = X_val_scaled.reindex(columns=X_train_scaled.columns, fill_value=0)
 
     return X_train_scaled, X_val_scaled

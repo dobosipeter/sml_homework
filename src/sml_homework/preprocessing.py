@@ -112,12 +112,15 @@ def scale_features(
     """
     scaler = StandardScaler()
     
-    # Identify numeric columns
+    # Robustly identify numeric columns to scale
+    numeric_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
+    
+    # Scale only continuous features, skipping binary/ordinal ones
     cols_to_scale = [
-        col for col in X_train.columns 
-        if X_train[col].nunique() > 2
+        col for col in numeric_cols 
+        if X_train[col].nunique() > 2 
+        and col not in ['grade_encoded', 'high_interest']
     ]
-
     # 1. Fit only on Training data
     scaler.fit(X_train[cols_to_scale])
 

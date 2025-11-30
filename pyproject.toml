@@ -11,6 +11,8 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "ipykernel",
+    "pyarrow",
+    "fastparquet",
 ]
 
 [build-system]

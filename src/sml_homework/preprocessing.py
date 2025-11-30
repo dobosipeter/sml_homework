@@ -86,6 +86,14 @@ def clean_and_encode_data(
             if col in df_clean.columns:
                 df_clean[col] = df_clean[col].fillna(val)
 
+    # 7. Log Transformation (EDA Finding: Skewness)
+    # 'annual_income' showed extreme right-skewness. 
+    # We apply log1p (log(x+1)) to normalize the distribution.
+    if 'annual_income' in df_clean.columns:
+        # Ensure no negative values (though income shouldn't be negative)
+        df_clean['annual_income'] = df_clean['annual_income'].clip(lower=0)
+        df_clean['annual_income'] = np.log1p(df_clean['annual_income'])
+
     return df_clean, imputation_values
 
 def scale_features(

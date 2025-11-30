@@ -115,13 +115,17 @@ def plot_categorical_distributions(
     plt.tight_layout()
     plt.show()
 
-def plot_correlation_heatmap(df: pd.DataFrame) -> None:
+def plot_correlation_heatmap(
+    df: pd.DataFrame, 
+    method: str = 'pearson'
+) -> None:
     """
-    Plots a heatmap of correlations between numerical features to identify 
-    relationships and potential multicollinearity. Uses the upper triangle mask.
-
+    Plots a heatmap of correlations between numerical features.
+    
     Args:
         df (pd.DataFrame): The dataframe containing the data.
+        method (str, optional): Correlation method ('pearson', 'spearman', 'kendall'). 
+                                Use 'spearman' for ordinal data. Defaults to 'pearson'.
     """
     # Select only numeric columns
     numeric_df = df.select_dtypes(include=['number'])
@@ -131,9 +135,9 @@ def plot_correlation_heatmap(df: pd.DataFrame) -> None:
         numeric_df = numeric_df.drop(columns=['id'])
         
     plt.figure(figsize=(10, 8))
-    corr = numeric_df.corr()
+    corr = numeric_df.corr(method=method)
     
-    # Create a mask for the upper triangle (since correlation matrices are symmetrical)
+    # Create a mask for the upper triangle
     mask = np.triu(np.ones_like(corr, dtype=bool))
     
     sns.heatmap(
@@ -145,7 +149,7 @@ def plot_correlation_heatmap(df: pd.DataFrame) -> None:
         cbar=True,
         square=True
     )
-    plt.title("Feature Correlation Matrix (Pearson)")
+    plt.title(f"Feature Correlation Matrix ({method.capitalize()})")
     plt.show()
 
 def plot_boxplots(
@@ -178,4 +182,24 @@ def plot_boxplots(
         plt.title(f'Boxplot of {col}')
         
     plt.tight_layout()
+    plt.show()
+
+def plot_scatter(
+    df: pd.DataFrame, 
+    x_col: str, 
+    y_col: str, 
+    hue: str | None = None
+) -> None:
+    """
+    Plots a scatter plot to visualize relationships between two continuous variables.
+
+    Args:
+        df (pd.DataFrame): The dataframe.
+        x_col (str): The column name for the x-axis.
+        y_col (str): The column name for the y-axis.
+        hue (str | None, optional): Column name for color coding (e.g., target class).
+    """
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(data=df, x=x_col, y=y_col, hue=hue, alpha=0.6)
+    plt.title(f'Scatter Plot: {x_col} vs {y_col}')
     plt.show()

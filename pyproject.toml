@@ -1,0 +1,18 @@
+[project]
+name = "sml_homework"
+version = "0.0.1"
+description = "Kaggle Playground S5E11 Assignment"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "ipykernel",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

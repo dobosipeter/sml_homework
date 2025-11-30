@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
+import pandas as pd
+import numpy as np
+
 def clean_and_encode_data(
     df: pd.DataFrame, 
     imputation_values: dict[str, float] | None = None
@@ -11,8 +14,9 @@ def clean_and_encode_data(
 
     Logic implemented:
     - **Ordinal Encoding**: Maps 'grade' (A-G) to integers.
+    - **Feature Extraction**: Creates 'grade' from 'grade_subgrade'.
     - **One-Hot Encoding**: Converts 'loan_purpose' to binary vectors.
-    - **Imputation**: Uses Median values calculated ONLY from the training set.
+    - **Imputation**: Uses Median values calculated only from the training set.
     - **Leakage Prevention**: If `imputation_values` are provided, it uses them 
       instead of recalculating statistics.
 
@@ -28,12 +32,12 @@ def clean_and_encode_data(
     """
     df_clean = df.copy()
 
-    # 1. Drop ID column (Irrelevant/Noise)
+    # 1. Drop ID column since it is irrelevant
     if 'id' in df_clean.columns:
         df_clean = df_clean.drop(columns=['id'])
 
-    # 2. Robust Grade Handling
-    # If 'grade' is missing but 'grade_subgrade' exists, extract the letter.
+    # 2. Reduce data sparsity by extracting 'grade' from 'grade_subgrade'
+    # We must extract 'grade' from 'grade_subgrade' before we drop 'grade_subgrade'.
     if 'grade' not in df_clean.columns and 'grade_subgrade' in df_clean.columns:
         df_clean['grade'] = df_clean['grade_subgrade'].str[0]
         
@@ -43,17 +47,19 @@ def clean_and_encode_data(
     
     if 'grade' in df_clean.columns:
         df_clean['grade_encoded'] = df_clean['grade'].map(grade_map)
-        # Fill any grades that didn't match (e.g., NaNs) with a default or mode
+        
+        # Handle potential mapping failures (NaNs) by filling with a middle ground (D=4)
         if df_clean['grade_encoded'].isnull().any():
-             df_clean['grade_encoded'] = df_clean['grade_encoded'].fillna(4) # Middle grade D
+             df_clean['grade_encoded'] = df_clean['grade_encoded'].fillna(4)
+             
+        # Drop the original 'grade' column now that we have the encoded version
         df_clean = df_clean.drop(columns=['grade'])
     
-    # Drop subgrade to avoid multicollinearity (since we captured the info in grade)
-    if 'grade_subgrade' in df_clean.columns:
+    # 4. Avoid Multicollinearity
+    if 'grade_subgrade' in df_clean.columns and 'grade_encoded' in df_clean.columns:
         df_clean = df_clean.drop(columns=['grade_subgrade'])
 
-    # 4. One-Hot Encoding for 'loan_purpose'
-    # drop_first=True prevents the "Dummy Variable Trap" (Multicollinearity).
+    # 5. One-Hot Encoding for 'loan_purpose'
     if 'loan_purpose' in df_clean.columns:
         df_clean = pd.get_dummies(
             df_clean, 
@@ -62,10 +68,10 @@ def clean_and_encode_data(
             dtype=int
         )
 
-    # 5. Imputation (Anti-Leakage Logic)
+    # 6. Imputation to avoid Data Leakage from valid to train
     numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
     
-    # TRAIN MODE: Calculate medians and save them
+    # Train mode: Calculate medians and save them
     if imputation_values is None:
         imputation_values = {}
         for col in numeric_cols:
@@ -74,7 +80,7 @@ def clean_and_encode_data(
                 imputation_values[col] = median_val
                 df_clean[col] = df_clean[col].fillna(median_val)
     
-    # TEST MODE: Use provided medians
+    # Test mode: Use provided medians
     else:
         for col, val in imputation_values.items():
             if col in df_clean.columns:
@@ -88,9 +94,6 @@ def scale_features(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Applies Standard Scaling (Z-score) to numeric features.
-    
-    Strictly follows the "Fit on Train, Transform on Test" rule to prevent
-    Data Leakage.
 
     Args:
         X_train (pd.DataFrame): Training features.
@@ -101,21 +104,20 @@ def scale_features(
     """
     scaler = StandardScaler()
     
-    # Identify numeric columns (excluding boolean/binary dummies if desired, 
-    # but scaling everything is generally safe for these models)
+    # Identify numeric columns
     cols_to_scale = [
         col for col in X_train.columns 
         if X_train[col].nunique() > 2
     ]
 
-    # 1. Fit ONLY on Training data
+    # 1. Fit only on Training data
     scaler.fit(X_train[cols_to_scale])
 
     # 2. Transform Training data
     X_train_scaled = X_train.copy()
     X_train_scaled[cols_to_scale] = scaler.transform(X_train[cols_to_scale])
 
-    # 3. Transform Validation data using the TRAIN scaler
+    # 3. Transform Validation data using the train scaler
     X_val_scaled = X_val.copy()
     X_val_scaled[cols_to_scale] = scaler.transform(X_val[cols_to_scale])
 
